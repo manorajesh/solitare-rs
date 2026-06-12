@@ -1,5 +1,5 @@
 use crate::card::{ Card, Suit, Value };
-use crate::renderer::CardTarget;
+use crate::renderer::{CardLocation, CardTarget};
 
 use rand::seq::SliceRandom;
 use rand::rng;
@@ -138,16 +138,25 @@ impl Foundation {
         }
 
         let pile = &mut self.piles[selected_pile as usize];
-        if
-            pile.0.is_empty() ||
-            (card.value as usize) == (pile.0.last().unwrap().value as usize) + 1
-        {
-            pile.0.push(card);
-            pile.1 = card.value == Value::King;
-            return Ok(());
+        if pile.0.is_empty() && card.value != Value::Ace {
+            return Err(GameError::InvalidMove("Only Aces can be placed on an empty foundation pile"));
         }
 
-        Err(GameError::InvalidMove("Invalid card placement"))
+        if
+            !pile.0.is_empty() &&
+            (card.value as usize) != (pile.0.last().unwrap().value as usize) + 1
+        {
+            return Err(GameError::InvalidMove("Invalid card placement"));
+        }
+
+        pile.0.push(card);
+        pile.1 = card.value == Value::King;
+        return Ok(());
+    }
+
+    pub fn take_card_from_pile(&mut self, selected_pile: Suit) -> Option<Card> {
+        let pile = &mut self.piles[selected_pile as usize];
+        pile.0.pop()
     }
 }
 
@@ -184,10 +193,45 @@ impl Klondike {
     }
 
     pub fn primary_action_at(&mut self, target: CardTarget) -> Result<(), GameError> {
-        if self.cards_in_play.0.is_empty() {
-            self.get_cards_in_play(target)?
-        } else {
-            self.place_cards_in_play(target)?
+        match target.location {
+            CardLocation::Tableau => {
+                if self.cards_in_play.0.is_empty() {
+                    self.get_cards_in_play(target)?;
+                } else {
+                    self.place_cards_in_play(target)?;
+                }
+            }
+
+            CardLocation::Foundation => {
+                if self.cards_in_play.0.is_empty() {
+                    if let Some(card) = self.foundation.take_card_from_pile(target.col_idx.into()) {
+                        self.cards_in_play.0 = vec![card];
+                        self.cards_in_play.1 = target;
+                    }
+                } else if self.cards_in_play.0.len() == 1 {
+                    if let Some(card) = self.cards_in_play.0.pop() {
+                        match self.foundation.place_card_on_pile(
+                            card,
+                            target.col_idx.into()
+                        ) {
+                            Ok(()) => {
+                                if let Some(original_col) = self.tableau.cols.get_mut(self.cards_in_play.1.col_idx) {
+                                    if let Some(target_idx) = self.cards_in_play.1.card_idx.checked_sub(1) {
+                                        if let Some(card) = original_col.get_mut(target_idx) {
+                                            card.face_up = true; 
+                                        }
+                                    }
+                                }
+                            }
+                            Err(_) => {
+                                self.force_restore_cards(vec![card], self.cards_in_play.1);
+                            }
+                        }
+                    }
+                }
+            }
+
+            CardLocation::Stock => {}
         }
 
         Ok(())
@@ -204,21 +248,37 @@ impl Klondike {
             Ok(()) => {
                 // flip face down card at original col
                 if let Some(original_col) = self.tableau.cols.get_mut(self.cards_in_play.1.col_idx) {
-                    if !original_col.is_empty() {
-                        if let Some(card) = original_col.get_mut(self.cards_in_play.1.card_idx - 1) {
-                            card.face_up = true;
+                    if let Some(target_idx) = self.cards_in_play.1.card_idx.checked_sub(1) {
+                        if let Some(card) = original_col.get_mut(target_idx) {
+                            card.face_up = true; 
                         }
                     }
                 }
             },
             Err(_) => {
                 // restore cards to original col
-                if let Some(col) = self.tableau.cols.get_mut(self.cards_in_play.1.col_idx) {
-                    col.extend(&self.cards_in_play.0);
-                }
+                self.force_restore_cards(self.cards_in_play.0.clone(), self.cards_in_play.1);
             }
         }
         self.cards_in_play.0.clear();
         Ok(())
+    }
+
+    fn force_restore_cards(&mut self, cards: Vec<Card>, target: CardTarget) {
+        match target.location {
+            CardLocation::Tableau => {
+                if let Some(col) = self.tableau.cols.get_mut(target.col_idx) {
+                    col.extend(&cards);
+                }
+            }
+            CardLocation::Foundation => {
+                if let Some(col) = self.foundation.piles.get_mut(target.col_idx) {
+                    col.0.extend(&cards);
+                }
+            }
+            CardLocation::Stock => {
+                self.stock.cards.extend(&cards);
+            }
+        }
     }
 }
