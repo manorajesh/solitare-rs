@@ -180,7 +180,7 @@ impl Klondike {
         let tableau = Tableau::new(&mut stock);
         let foundation = Foundation::new();
 
-        Self { tableau, foundation, stock, cards_in_play: (Vec::new(), CardTarget { col_idx: 0, card_idx: 0 }) }
+        Self { tableau, foundation, stock, cards_in_play: (Vec::new(), CardTarget::default()) }
     }
 
     pub fn primary_action_at(&mut self, target: CardTarget) -> Result<(), GameError> {

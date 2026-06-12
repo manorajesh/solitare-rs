@@ -40,7 +40,16 @@ pub enum GameEvent {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CardLocation {
+    #[default]
+    Tableau,
+    Foundation,
+    Stock,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct CardTarget {
+    pub location: CardLocation,
     pub col_idx: usize,
     pub card_idx: usize,
 }
@@ -53,7 +62,7 @@ pub struct Terminal {
 
 pub trait Draw {
     fn draw(&self, term: &mut Terminal, col: u16, row: u16, is_active: bool) -> io::Result<()>;
-    fn draw_placeholder(&self, _term: &mut Terminal, _col: u16, _row: u16) -> io::Result<()> {Ok(())}
+    fn draw_placeholder(&self, _term: &mut Terminal, _col: u16, _row: u16, _is_active: bool) -> io::Result<()> {Ok(())}
 }
 
 impl Suit {
@@ -140,11 +149,16 @@ impl Draw for Card {
         Ok(())
     }
 
-    fn draw_placeholder(&self, term: &mut Terminal, col: u16, row: u16) -> io::Result<()> {
+    fn draw_placeholder(&self, term: &mut Terminal, col: u16, row: u16, is_active: bool) -> io::Result<()> {
         let suit = self.suit.to_string();
         let suit_color = self.suit.get_dim_color();
+        let card_color = if is_active {
+            Color::Yellow
+        } else {
+            Color::DarkGrey
+        };
 
-        execute!(term.stdout, SetForegroundColor(Color::DarkGrey))?;
+        execute!(term.stdout, SetForegroundColor(card_color))?;
 
         term.write_at(col, row, "╭─────╮")?;
         term.write_at(col, row + 1, "│     │")?;
@@ -153,7 +167,7 @@ impl Draw for Card {
         write!(term.stdout, "│  ")?;
         execute!(term.stdout, SetForegroundColor(suit_color))?;
         write!(term.stdout, "{}", suit)?;
-        execute!(term.stdout, SetForegroundColor(Color::DarkGrey))?;
+        execute!(term.stdout, SetForegroundColor(card_color))?;
         write!(term.stdout, "  │")?;
 
         term.write_at(col, row + 3, "│     │")?;
@@ -173,7 +187,12 @@ impl Draw for Tableau {
             let mut is_active = false;
             for (card_idx, card) in col_cards.iter().enumerate() {
                 if let Some(target) = term.hovered_cards {
-                    if !is_active && target.col_idx == col_idx && target.card_idx == card_idx && card.face_up {
+                    if !is_active && 
+                       target.location == CardLocation::Tableau && 
+                       target.col_idx == col_idx && 
+                       target.card_idx == card_idx && 
+                       card.face_up 
+                    {
                         is_active = true;
                     }
                 } else {
@@ -195,12 +214,18 @@ impl Draw for Foundation {
             let x = (col_idx as u16) * 8 + col;
             let y = row;
 
+            let is_active = if let Some(target) = term.hovered_cards {
+                target.location == CardLocation::Foundation && target.col_idx == col_idx
+            } else {
+                false
+            };
+
             if let Some(card) = col_cards.0.last() {
                 card.draw(term, x, y, is_active)?;
             } else {
                 // TODO: Need to allocate one more?
                 let card = Card::new(card::Value::Ace, col_idx.into());
-                card.draw_placeholder(term, x, y)?;
+                card.draw_placeholder(term, x, y, is_active)?;
             }
         }
 
@@ -303,6 +328,26 @@ impl Terminal {
 
 impl Klondike {
     pub fn get_card_at(&self, mouse_col: u16, mouse_row: u16) -> Option<CardTarget> {
+        // foundation
+        for col_idx in 0..self.foundation.piles.len() {
+            let start_x = (col_idx as u16) * 8 + 24;
+            let end_x = start_x + 7;
+
+            if mouse_col < start_x || mouse_col >= end_x {
+                continue;
+            }
+
+            let card_height = 5;
+
+            let start_y = 0;
+            let end_y = start_y + card_height;
+
+            if mouse_row >= start_y && mouse_row < end_y {
+                return Some(CardTarget { col_idx, card_idx: 0, location: CardLocation::Foundation });
+            }
+        }
+
+        // tableau
         for (col_idx, col) in self.tableau.cols.iter().enumerate() {
             let start_x = (col_idx as u16) * 8;
             let end_x = start_x + 7;
@@ -327,7 +372,7 @@ impl Klondike {
                 let end_y = start_y + card_height;
 
                 if mouse_row >= start_y && mouse_row < end_y {
-                    return Some(CardTarget { col_idx, card_idx });
+                    return Some(CardTarget { col_idx, card_idx, location: CardLocation::Tableau });
                 }
 
                 current_y += 2;
