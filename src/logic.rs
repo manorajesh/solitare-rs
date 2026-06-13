@@ -108,34 +108,38 @@ impl Tableau {
             return Err(GameError::InvalidMove("No cards to place"));
         }
 
-        // empty col
-        let selected_col = &mut self.cols[col_idx];
-        if selected_col.is_empty() && cards[0].value != Value::King {
-            return Err(GameError::InvalidMove("Only Kings can be placed in an empty column"));
-        }
-
         // check suit/color
-        let last_col_card = selected_col.last().expect("somehow col is empty");
-        match cards[0].suit {
-            Suit::Hearts | Suit::Diamonds => {
-                if last_col_card.suit != Suit::Spades && last_col_card.suit != Suit::Clubs {
-                    return Err(GameError::InvalidMove("Invalid suit for the target column"));
-                }
-            },
-            Suit::Clubs | Suit::Spades => {
-                if last_col_card.suit != Suit::Hearts && last_col_card.suit != Suit::Diamonds {
-                    return Err(GameError::InvalidMove("Invalid suit for the target column"));
-                }
-            },
+        let selected_col = &mut self.cols[col_idx];
+        if let Some(last_col_card) = selected_col.last() {
+            match cards[0].suit {
+                Suit::Hearts | Suit::Diamonds => {
+                    if last_col_card.suit != Suit::Spades && last_col_card.suit != Suit::Clubs {
+                        return Err(GameError::InvalidMove("Invalid suit for the target column"));
+                    }
+                },
+                Suit::Clubs | Suit::Spades => {
+                    if last_col_card.suit != Suit::Hearts && last_col_card.suit != Suit::Diamonds {
+                        return Err(GameError::InvalidMove("Invalid suit for the target column"));
+                    }
+                },
+            }
+
+            // check value
+            if cards[0].value as usize != (last_col_card.value as usize) - 1 {
+                return Err(GameError::InvalidMove("Invalid value for the target column"));
+            }
+
+            self.cols[col_idx].extend(cards);
+            return Ok(());
         }
 
-        // check value
-        if cards[0].value as usize != (last_col_card.value as usize) - 1 {
-            return Err(GameError::InvalidMove("Invalid value for the target column"));
+        // empty col
+        if selected_col.is_empty() && cards[0].value == Value::King {
+            selected_col.extend(cards);
+            Ok(())
+        } else {
+            Err(GameError::InvalidMove("Only Kings can be placed on empty tableau columns"))
         }
-
-        self.cols[col_idx].extend(cards);
-        Ok(())
     }
 }
 

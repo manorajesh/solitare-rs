@@ -62,7 +62,7 @@ pub struct Terminal {
 
 pub trait Draw {
     fn draw(&self, term: &mut Terminal, col: u16, row: u16, is_active: bool) -> io::Result<()>;
-    fn draw_placeholder(&self, _term: &mut Terminal, _col: u16, _row: u16, _is_active: bool) -> io::Result<()> {Ok(())}
+    fn draw_placeholder(&self, _term: &mut Terminal, _col: u16, _row: u16, _is_active: bool, _show_suit: bool) -> io::Result<()> {Ok(())}
 }
 
 impl Suit {
@@ -147,7 +147,7 @@ impl Draw for Card {
         Ok(())
     }
 
-    fn draw_placeholder(&self, term: &mut Terminal, col: u16, row: u16, is_active: bool) -> io::Result<()> {
+    fn draw_placeholder(&self, term: &mut Terminal, col: u16, row: u16, is_active: bool, show_suit: bool) -> io::Result<()> {
         let suit = self.suit.to_string();
         let suit_color = self.suit.get_dim_color();
         let card_color = if is_active {
@@ -164,7 +164,7 @@ impl Draw for Card {
         term.move_to(col, row + 2)?;
         write!(term.stdout, "│  ")?;
         execute!(term.stdout, SetForegroundColor(suit_color))?;
-        write!(term.stdout, "{}", suit)?;
+        write!(term.stdout, "{}", if show_suit {suit} else {" ".to_string()})?;
         execute!(term.stdout, SetForegroundColor(card_color))?;
         write!(term.stdout, "  │")?;
 
@@ -183,6 +183,15 @@ impl Draw for Tableau {
             let mut y = row;
 
             let mut is_active = false;
+            if col_cards.is_empty() {
+                if let Some(target) = term.hovered_cards {
+                    if target.location == CardLocation::Tableau && target.col_idx == col_idx {
+                        let card = Card::new(card::Value::Ace, col_idx.into(), false);
+                        card.draw_placeholder(term, x, y, true, false)?;
+                        continue;
+                    }
+                }
+            }
             for (card_idx, card) in col_cards.iter().enumerate() {
                 if let Some(target) = term.hovered_cards {
                     if !is_active && 
@@ -223,7 +232,7 @@ impl Draw for Foundation {
             } else {
                 // TODO: Need to allocate one more?
                 let card = Card::new(card::Value::Ace, col_idx.into(), false);
-                card.draw_placeholder(term, x, y, is_active)?;
+                card.draw_placeholder(term, x, y, is_active, true)?;
             }
         }
 
@@ -407,6 +416,16 @@ impl Klondike {
                 }
 
                 current_y += 2;
+            }
+
+            // If column is empty, allow clicking on the empty space to select the column
+            if col.is_empty() {
+                let start_y = 5;
+                let end_y = start_y + 5;
+
+                if mouse_row >= start_y && mouse_row < end_y {
+                    return Some(CardTarget { col_idx, card_idx: 0, location: CardLocation::Tableau });
+                }
             }
         }
 
