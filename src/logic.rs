@@ -43,6 +43,7 @@ pub struct Foundation {
 
 pub struct Stock {
     pub cards: Vec<Card>,
+    pub visible_idx: Option<usize>
 }
 
 pub struct Klondike {
@@ -163,16 +164,45 @@ impl Foundation {
 impl Stock {
     pub fn new() -> Self {
         let mut cards: Vec<Card> = Value::ALL.iter()
-            .flat_map(|&val| Suit::ALL.iter().map(move |&suit| Card::new(val, suit)))
+            .flat_map(|&val| Suit::ALL.iter().map(move |&suit| Card::new(val, suit, false)))
             .collect();
 
         cards.shuffle(&mut rng());
 
-        Stock { cards }
+        Stock { cards, visible_idx: None }
     }
 
-    pub fn take(&mut self) -> Option<Card> {
-        self.cards.pop()
+    pub fn get_new_visible(&mut self) {
+        if self.cards.is_empty() {
+            self.visible_idx = None;
+            return;
+        }
+
+        if let Some(idx) = self.visible_idx {
+            if idx > 0 {
+                self.visible_idx = Some(idx - 1);
+            } else {
+                self.visible_idx = None;
+            }
+        } else {
+            self.visible_idx = Some(self.cards.len() - 1);
+        }
+
+        if let Some(visible_idx) = self.visible_idx {
+            if let Some(card) = self.cards.get_mut(visible_idx) {
+                card.face_up = true;
+            }
+        }
+    }
+
+    pub fn peek_visible(&self) -> Option<&Card> {
+        self.cards.get(self.visible_idx?)
+    }
+
+    pub fn take_visible(&mut self) -> Option<(Card, usize)> {
+        let result  = Some((self.cards.remove(self.visible_idx?), self.visible_idx?));
+        self.visible_idx = None;
+        result
     }
 
     pub fn take_n(&mut self, n: usize) -> Vec<Card> {
@@ -231,7 +261,21 @@ impl Klondike {
                 }
             }
 
-            CardLocation::Stock => {}
+            CardLocation::Stock => {
+                if self.cards_in_play.0.is_empty() {
+                    if target.col_idx == 0 {
+                        self.stock.get_new_visible();
+                    } else if target.col_idx == 1 {
+                        if let Some((card, card_idx)) = self.stock.take_visible() {
+                            self.cards_in_play.0 = vec![card];
+                            self.cards_in_play.1 = CardTarget { location: CardLocation::Stock, col_idx: 1, card_idx };
+                        }
+                    }
+                } else {
+                    self.force_restore_cards(self.cards_in_play.0.clone(), self.cards_in_play.1);
+                    self.cards_in_play.0.clear();
+                }
+            }
         }
 
         Ok(())
@@ -277,7 +321,8 @@ impl Klondike {
                 }
             }
             CardLocation::Stock => {
-                self.stock.cards.extend(&cards);
+                self.stock.cards.insert(target.card_idx, cards[0]);
+                self.stock.visible_idx = Some(target.card_idx);
             }
         }
     }

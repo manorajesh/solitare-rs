@@ -97,8 +97,6 @@ impl Draw for Card {
             term.move_to(col, row + 3)?;
             write!(term.stdout, "│\\\\\\\\\\│")?;
             term.move_to(col, row + 4)?;
-            write!(term.stdout, "│\\\\\\\\\\│")?;
-            term.move_to(col, row + 5)?;
             write!(term.stdout, "╰─────╯")?;
 
             if is_active {
@@ -224,7 +222,7 @@ impl Draw for Foundation {
                 card.draw(term, x, y, is_active)?;
             } else {
                 // TODO: Need to allocate one more?
-                let card = Card::new(card::Value::Ace, col_idx.into());
+                let card = Card::new(card::Value::Ace, col_idx.into(), false);
                 card.draw_placeholder(term, x, y, is_active)?;
             }
         }
@@ -235,6 +233,24 @@ impl Draw for Foundation {
 
 impl Draw for Stock {
     fn draw(&self, term: &mut Terminal, col: u16, row: u16, is_active: bool) -> io::Result<()> {
+        // draw stack (face down or repeat icon shown if all cards were drawn)
+        let card = Card::default();
+        let is_active = if let Some(target) = term.hovered_cards {
+            target.location == CardLocation::Stock && target.col_idx == 0
+        } else {
+            false
+        };
+        card.draw(term, col, row, is_active)?;
+
+        // draw visible card if there is
+        let is_active = if let Some(target) = term.hovered_cards {
+            target.location == CardLocation::Stock && target.col_idx == 1
+        } else {
+            false
+        };
+        if let Some(visible_card) = self.peek_visible() {
+            visible_card.draw(term, col + 8, row, is_active)?;
+        }
         Ok(())
     }
 }
@@ -328,6 +344,21 @@ impl Terminal {
 
 impl Klondike {
     pub fn get_card_at(&self, mouse_col: u16, mouse_row: u16) -> Option<CardTarget> {
+        // stock
+        for i in 0..2 {
+            let start_x = (i as u16) * 8;
+            let end_x = start_x + 7;
+
+            let card_height = 5;
+
+            let start_y = 0;
+            let end_y = start_y + card_height;
+
+            if mouse_col >= start_x && mouse_col < end_x && mouse_row >= start_y && mouse_row < end_y {
+                return Some(CardTarget { col_idx: i, card_idx: 0, location: CardLocation::Stock });
+            }
+        }
+
         // foundation
         for col_idx in 0..self.foundation.piles.len() {
             let start_x = (col_idx as u16) * 8 + 24;

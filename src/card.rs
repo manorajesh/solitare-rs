@@ -1,15 +1,17 @@
 // definitions ---
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy, Default)]
 pub enum Suit {
+    #[default]
     Hearts = 0,
     Diamonds = 1,
     Clubs = 2,
     Spades = 3,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy, Default)]
 pub enum Value {
+    #[default]
     Ace = 1,
     Two = 2,
     Three = 3,
@@ -25,7 +27,7 @@ pub enum Value {
     King = 13,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy, Default)]
 pub struct Card {
     pub value: Value,
     pub suit: Suit,
@@ -107,7 +109,7 @@ impl Value {
 }
 
 impl Card {
-    pub fn new(value: Value, suit: Suit) -> Self {
-        Card { value, suit, face_up: false }
+    pub fn new(value: Value, suit: Suit, face_up: bool) -> Self {
+        Card { value, suit, face_up }
     }
 }
