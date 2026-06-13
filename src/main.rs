@@ -6,7 +6,9 @@ use crate::{ logic::Klondike, renderer::* };
 
 fn main() -> std::io::Result<()> {
     let mut term = Terminal::setup()?;
-    let mut game = Klondike::new();
+    let mut game = Klondike::new(|stats| {
+        eprintln!("Game Over! Statistics: {:?}", stats);
+    });
     let status = run_game(&mut term, &mut game);
     term.destroy()?;
 

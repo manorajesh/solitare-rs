@@ -14,6 +14,12 @@ pub enum GameError {
     Unknown,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GameStatistics {
+    pub game_start: std::time::Instant,
+    pub moves: usize,
+}
+
 impl std::fmt::Display for GameError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -52,9 +58,21 @@ pub struct Klondike {
     pub stock: Stock,
 
     pub cards_in_play: (Vec<Card>, CardTarget), // (cards, original target)
+
+    pub statistics: GameStatistics,
+    pub game_over_callback: fn(GameStatistics)
 }
 
 // impls ---
+
+impl GameStatistics {
+    pub fn new() -> Self {
+        Self {
+            game_start: std::time::Instant::now(),
+            moves: 0,
+        }
+    }
+}
 
 impl Tableau {
     pub fn new(stock: &mut Stock) -> Self {
@@ -214,12 +232,33 @@ impl Stock {
 }
 
 impl Klondike {
-    pub fn new() -> Self {
+    pub fn new(game_over_callback: fn(GameStatistics)) -> Self {
         let mut stock = Stock::new();
         let tableau = Tableau::new(&mut stock);
         let foundation = Foundation::new();
+        let statistics = GameStatistics::new();
 
-        Self { tableau, foundation, stock, cards_in_play: (Vec::new(), CardTarget::default()) }
+        Self { tableau, foundation, stock, cards_in_play: (Vec::new(), CardTarget::default()), game_over_callback, statistics }
+    }
+
+    fn is_game_over(&self) {
+        for pile in &self.foundation.piles {
+            if pile.0.len() != 13 && pile.1 {
+                return;
+            }
+        }
+
+        for col in &self.tableau.cols {
+            if !col.is_empty() {
+                return;
+            }
+        }
+
+        if !self.stock.cards.is_empty() {
+            return;
+        }
+
+        (self.game_over_callback)(self.statistics);
     }
 
     pub fn primary_action_at(&mut self, target: CardTarget) -> Result<(), GameError> {
